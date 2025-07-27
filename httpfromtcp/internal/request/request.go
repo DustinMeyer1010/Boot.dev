@@ -6,7 +6,15 @@ import (
 	"io"
 )
 
+type Status int
+
+const (
+	initialized Status = iota
+	done
+)
+
 type Request struct {
+	Status      Status
 	RequestLine RequestLine
 }
 
@@ -16,53 +24,98 @@ type RequestLine struct {
 	Method        string
 }
 
+var buf = make([]byte, 8)
+
 func RequestFromReader(reader io.Reader) (*Request, error) {
 
-	request, err := io.ReadAll(reader)
+	request := Request{Status: initialized}
 
-	if err != nil {
-		return nil, err
+	readToIndex := 0
+
+	for request.Status != done {
+		if readToIndex >= len(buf) {
+			tempbuf := make([]byte, len(buf)*2)
+			copy(tempbuf, buf)
+			buf = tempbuf
+		}
+
+		n, err := reader.Read(buf[readToIndex:])
+
+		if err == io.EOF {
+			break
+		}
+		readToIndex += n
+
+		consumed, err := request.parse(buf)
+
+		if err != nil {
+			return nil, err
+		}
+
+		if consumed > 0 {
+			buf = buf[consumed:]
+			readToIndex -= consumed
+		}
 	}
 
-	requestParse := bytes.Split(request, []byte("\r\n"))
-	requestLineAll := requestParse[0]
-
-	requestLine, err := ParseRequestLine(requestLineAll)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &Request{RequestLine: *requestLine}, err
+	return &request, nil
 }
 
-func ParseRequestLine(requestLine []byte) (*RequestLine, error) {
+func parseRequestLine(request []byte) (int, error) {
 
-	requestLineList := bytes.Split(requestLine, []byte(" "))
+	requestParse := bytes.Split(request, []byte("\r\n"))
 
-	if len(requestLineList) != 3 {
-		return nil, fmt.Errorf("invalid request line")
+	if len(requestParse) == 1 {
+		return 0, nil
 	}
 
-	method := string(requestLineList[0])
+	return len(requestParse[0]) + 2, nil
+
+}
+
+func (r *Request) parse(data []byte) (int, error) {
+
+	if r.Status == done {
+		return 0, fmt.Errorf("trying to read data after done")
+	}
+
+	consumed, err := parseRequestLine(data)
+
+	if err != nil {
+		return 0, err
+	}
+
+	if consumed == 0 {
+		return 0, nil
+	}
+
+	requestLine := bytes.Split(data[:consumed-2], []byte(" "))
+
+	if len(requestLine) != 3 {
+		return 0, fmt.Errorf("invalid request line")
+	}
+
+	method := string(requestLine[0])
+	path := string(requestLine[1])
+	version := string(requestLine[2][5:])
 
 	if err := checkValidMethod(method); err != nil {
-		return nil, err
+		return 0, err
 	}
 
-	target := string(requestLineList[1])
-
-	versionNumber := string(bytes.Split(requestLineList[2], []byte("/"))[1])
-
-	if err := checkValidVersion(versionNumber); err != nil {
-		return nil, err
+	if err := checkValidVersion(version); err != nil {
+		return 0, err
 	}
 
-	return &RequestLine{
+	r.Status = done
+
+	r.RequestLine = RequestLine{
 		Method:        method,
-		RequestTarget: target,
-		HttpVersion:   versionNumber,
-	}, nil
+		RequestTarget: path,
+		HttpVersion:   version,
+	}
+
+	return consumed, nil
 }
 
 func checkValidMethod(method string) error {

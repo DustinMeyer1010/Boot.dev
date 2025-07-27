@@ -7,6 +7,8 @@ import (
 	"log"
 	"net"
 	"strings"
+
+	"github.com/DustinMeyer1010/httpfromtcp/internal/request"
 )
 
 func main() {
@@ -27,11 +29,13 @@ func main() {
 
 		fmt.Println("Connection created ", conn.RemoteAddr())
 
-		lines := getLinesChannel(conn)
+		request, err := request.RequestFromReader(conn)
 
-		for line := range lines {
-			fmt.Println(line)
+		if err != nil {
+			fmt.Println(err)
 		}
+
+		fmt.Printf("Request Line:\n- Method: %s\n- Target: %s\n- Verison: %s\n", request.RequestLine.Method, request.RequestLine.RequestTarget, request.RequestLine.HttpVersion)
 
 		fmt.Println("Closed Connection to", conn.RemoteAddr())
 	}
