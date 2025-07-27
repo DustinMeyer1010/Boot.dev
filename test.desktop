@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Terminal=true
+Name=Start Frontend & Backend
+Exec=C:\Users\dmeyer20\Documents\Github\Boot Dev\test.sh
+Icon=utilities-terminal
