@@ -41,9 +41,10 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 		n, err := reader.Read(buf[readToIndex:])
 
-		if err == io.EOF {
+		if n == 0 || err == io.EOF {
 			break
 		}
+
 		readToIndex += n
 
 		consumed, err := request.parse(buf)
@@ -57,6 +58,8 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 			readToIndex -= consumed
 		}
 	}
+
+	fmt.Println(request.RequestLine.Method)
 
 	return &request, nil
 }
