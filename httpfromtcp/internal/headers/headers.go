@@ -3,6 +3,7 @@ package headers
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"unicode"
 )
 
@@ -19,8 +20,7 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	consumed := 0
 
 	if bytes.HasPrefix(data, CRLF) {
-		fmt.Printf("%q\n", data)
-		return 0, true, nil
+		return 2, true, nil
 	}
 
 	if !bytes.Contains(data, CRLF) {
@@ -45,12 +45,22 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	}
 
 	if _, exist := h[string(fieldName[:len(fieldName)-1])]; exist {
-		h[string(fieldName[:len(fieldName)-1])] += ", " + string(fieldValue)
+		h[strings.ToLower(string(fieldName[:len(fieldName)-1]))] += ", " + string(fieldValue)
 	} else {
-		h[string(fieldName[:len(fieldName)-1])] = string(fieldValue)
+		h[strings.ToLower(string(fieldName[:len(fieldName)-1]))] = string(fieldValue)
 	}
 
 	return consumed, false, nil
+}
+
+func (h Headers) Get(key string) string {
+
+	if _, exist := h[strings.ToLower(key)]; exist {
+		return h[strings.ToLower(key)]
+	}
+
+	return ""
+
 }
 
 func checkValidFieldName(fieldName []byte) error {

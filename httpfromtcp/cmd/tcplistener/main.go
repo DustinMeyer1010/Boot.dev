@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	listener, err := net.Listen("tcp", ":42069")
+	listener, err := net.Listen("tcp", ":42068")
 
 	if err != nil {
 		log.Fatal(err)
@@ -37,6 +37,14 @@ func main() {
 
 		fmt.Printf("Request Line:\n- Method: %s\n- Target: %s\n- Verison: %s\n", request.RequestLine.Method, request.RequestLine.RequestTarget, request.RequestLine.HttpVersion)
 
+		fmt.Println("Headers: ")
+		for k, v := range request.Headers {
+			fmt.Printf("- %s: %s\n", k, v)
+
+		}
+
+		fmt.Println("Body: ")
+		fmt.Printf("- %s\n", string(request.Body))
 		fmt.Println("Closed Connection to", conn.RemoteAddr())
 	}
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"strconv"
 
 	"github.com/DustinMeyer1010/httpfromtcp/internal/headers"
 )
@@ -13,12 +14,14 @@ type Status int
 const (
 	initialized Status = iota
 	requestStateParsingHeaders
+	parsingBody
 	done
 )
 
 type Request struct {
 	Status      Status
 	Headers     headers.Headers
+	Body        []byte
 	RequestLine RequestLine
 }
 
@@ -32,6 +35,8 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	var buf = make([]byte, 8)
 
 	request := Request{Status: initialized, Headers: headers.NewHeaders()}
+
+	var consumed int = 0
 
 	readToIndex := 0
 
@@ -51,12 +56,15 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		n, err := reader.Read(buf[readToIndex:])
 
 		if err == io.EOF || err != nil {
+			if length, _ := strconv.Atoi(request.Headers.Get("content-length")); len(request.Body) < length {
+				return &request, fmt.Errorf("content length longer than body")
+			}
 			break
 		}
 
 		readToIndex += n
 
-		consumed, err := request.parse(buf)
+		consumed, err = request.parse(buf)
 
 		if err != nil {
 			return nil, err
@@ -68,8 +76,6 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		}
 
 	}
-
-	fmt.Println("Before Return ", request.Headers)
 
 	return &request, nil
 }
@@ -88,11 +94,9 @@ func parseRequestLine(request []byte) (int, error) {
 
 func (r *Request) parse(data []byte) (int, error) {
 
-	var consumed int
+	var consumed int = 0
 	var err error
 	var complete bool
-
-	fmt.Printf("%q\n", data)
 
 	switch r.Status {
 	case done:
@@ -141,9 +145,41 @@ func (r *Request) parse(data []byte) (int, error) {
 		}
 
 		if complete {
+			r.Status = parsingBody
+		}
+	case parsingBody:
+
+		headerValue := r.Headers.Get("content-length")
+
+		if headerValue == "" {
 			r.Status = done
 		}
+
+		contentLength, err := strconv.Atoi(headerValue)
+
+		if err != nil {
+			return 0, err
+		}
+
+		for _, value := range data {
+			if value == byte(0x00) {
+				break
+			}
+
+			r.Body = append(r.Body, value)
+			consumed++
+		}
+
+		if len(r.Body) > contentLength {
+			return 0, fmt.Errorf("body longer than header content length")
+		}
+
+		if len(r.Body) == contentLength {
+			r.Status = done
+		}
+
 	}
+
 	return consumed, nil
 }
 
