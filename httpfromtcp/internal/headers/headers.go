@@ -6,31 +6,32 @@ import (
 	"unicode"
 )
 
-var CRLF []byte = []byte("\r\n\r\n")
+var CRLF []byte = []byte("\r\n")
 
 type Headers map[string]string
 
 func NewHeaders() Headers {
-	return Headers{}
+	return make(Headers)
 }
 
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 
 	consumed := 0
 
-	if !bytes.Contains(data, CRLF) {
-		return 0, false, nil
+	if bytes.HasPrefix(data, CRLF) {
+		fmt.Printf("%q\n", data)
+		return 0, true, nil
 	}
 
-	if bytes.HasPrefix(data, CRLF) {
-		return 0, true, nil
+	if !bytes.Contains(data, CRLF) {
+		return 0, false, nil
 	}
 
 	splitData := bytes.Split(data, CRLF)
 
 	headerUnParsed := splitData[0]
 
-	consumed += len(headerUnParsed) + 4
+	consumed += len(headerUnParsed) + 2
 
 	headerUnParsed = bytes.TrimSpace(headerUnParsed)
 

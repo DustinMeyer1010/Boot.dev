@@ -4,17 +4,21 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+
+	"github.com/DustinMeyer1010/httpfromtcp/internal/headers"
 )
 
 type Status int
 
 const (
 	initialized Status = iota
+	requestStateParsingHeaders
 	done
 )
 
 type Request struct {
 	Status      Status
+	Headers     headers.Headers
 	RequestLine RequestLine
 }
 
@@ -24,24 +28,29 @@ type RequestLine struct {
 	Method        string
 }
 
-var buf = make([]byte, 8)
-
 func RequestFromReader(reader io.Reader) (*Request, error) {
+	var buf = make([]byte, 8)
 
-	request := Request{Status: initialized}
+	request := Request{Status: initialized, Headers: headers.NewHeaders()}
 
 	readToIndex := 0
 
 	for request.Status != done {
+
 		if readToIndex >= len(buf) {
-			tempbuf := make([]byte, len(buf)*2)
-			copy(tempbuf, buf)
-			buf = tempbuf
+			if len(buf) == 0 {
+				buf = make([]byte, 8)
+			} else {
+				tempbuf := make([]byte, len(buf)*2)
+				copy(tempbuf, buf)
+				buf = tempbuf
+			}
+
 		}
 
 		n, err := reader.Read(buf[readToIndex:])
 
-		if n == 0 || err == io.EOF {
+		if err == io.EOF || err != nil {
 			break
 		}
 
@@ -57,9 +66,10 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 			buf = buf[consumed:]
 			readToIndex -= consumed
 		}
+
 	}
 
-	fmt.Println(request.RequestLine.Method)
+	fmt.Println("Before Return ", request.Headers)
 
 	return &request, nil
 }
@@ -78,46 +88,62 @@ func parseRequestLine(request []byte) (int, error) {
 
 func (r *Request) parse(data []byte) (int, error) {
 
-	if r.Status == done {
+	var consumed int
+	var err error
+	var complete bool
+
+	fmt.Printf("%q\n", data)
+
+	switch r.Status {
+	case done:
 		return 0, fmt.Errorf("trying to read data after done")
+	case initialized:
+		consumed, err = parseRequestLine(data)
+
+		if err != nil {
+			return 0, err
+		}
+
+		if consumed == 0 {
+			return 0, nil
+		}
+
+		requestLine := bytes.Split(data[:consumed-2], []byte(" "))
+
+		if len(requestLine) != 3 {
+			return 0, fmt.Errorf("invalid request line")
+		}
+
+		method := string(requestLine[0])
+		path := string(requestLine[1])
+		version := string(requestLine[2][5:])
+
+		if err := checkValidMethod(method); err != nil {
+			return 0, err
+		}
+
+		if err := checkValidVersion(version); err != nil {
+			return 0, err
+		}
+
+		r.Status = requestStateParsingHeaders
+
+		r.RequestLine = RequestLine{
+			Method:        method,
+			RequestTarget: path,
+			HttpVersion:   version,
+		}
+	case requestStateParsingHeaders:
+		consumed, complete, err = r.Headers.Parse(data)
+
+		if err != nil {
+			return 0, err
+		}
+
+		if complete {
+			r.Status = done
+		}
 	}
-
-	consumed, err := parseRequestLine(data)
-
-	if err != nil {
-		return 0, err
-	}
-
-	if consumed == 0 {
-		return 0, nil
-	}
-
-	requestLine := bytes.Split(data[:consumed-2], []byte(" "))
-
-	if len(requestLine) != 3 {
-		return 0, fmt.Errorf("invalid request line")
-	}
-
-	method := string(requestLine[0])
-	path := string(requestLine[1])
-	version := string(requestLine[2][5:])
-
-	if err := checkValidMethod(method); err != nil {
-		return 0, err
-	}
-
-	if err := checkValidVersion(version); err != nil {
-		return 0, err
-	}
-
-	r.Status = done
-
-	r.RequestLine = RequestLine{
-		Method:        method,
-		RequestTarget: path,
-		HttpVersion:   version,
-	}
-
 	return consumed, nil
 }
 

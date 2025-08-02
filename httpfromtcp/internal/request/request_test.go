@@ -1,6 +1,7 @@
 package request
 
 import (
+	"fmt"
 	"io"
 	"testing"
 
@@ -8,7 +9,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var testCounter int = 1
+
 func TestRequestLineParse(t *testing.T) {
+
+	fmt.Println(testCounter)
 
 	// Test: Good GET Request line
 	reader := &chunkReader{
@@ -22,17 +27,52 @@ func TestRequestLineParse(t *testing.T) {
 	assert.Equal(t, "/", r.RequestLine.RequestTarget)
 	assert.Equal(t, "1.1", r.RequestLine.HttpVersion)
 
+	fmt.Println("---------")
+	testCounter++
+	fmt.Println(testCounter)
+
 	// Test: Good GET Request line with path
-	reader = &chunkReader{
+	reader1 := &chunkReader{
 		data:            "GET /coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
-		numBytesPerRead: 1,
+		numBytesPerRead: 2,
 	}
-	r, err = RequestFromReader(reader)
+	r, err = RequestFromReader(reader1)
 	require.NoError(t, err)
 	require.NotNil(t, r)
 	assert.Equal(t, "GET", r.RequestLine.Method)
 	assert.Equal(t, "/coffee", r.RequestLine.RequestTarget)
 	assert.Equal(t, "1.1", r.RequestLine.HttpVersion)
+
+	fmt.Println("---------")
+	testCounter++
+	fmt.Println(testCounter)
+	// Test: Standard Headers
+	reader = &chunkReader{
+		data:            "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err = RequestFromReader(reader)
+	fmt.Println(r.Headers)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	assert.Equal(t, "localhost:42069", r.Headers["Host"])
+	assert.Equal(t, "curl/7.81.0", r.Headers["User-Agent"])
+	assert.Equal(t, "*/*", r.Headers["Accept"])
+
+	fmt.Println("---------")
+	testCounter++
+	fmt.Println(testCounter)
+	// Test: Malformed Header
+	reader = &chunkReader{
+		data:            "GET / HTTP/1.1\r\nHost localhost:42069\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err = RequestFromReader(reader)
+	require.Error(t, err)
+
+	fmt.Println("---------")
+	testCounter++
+	fmt.Println(testCounter)
 }
 
 type chunkReader struct {
